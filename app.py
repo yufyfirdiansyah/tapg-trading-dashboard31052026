@@ -34,13 +34,21 @@ except ImportError:
 # Inisialisasi Flask
 app = Flask(__name__)
 
-# Konfigurasi Path File
+# Konfigurasi Path File (Mendukung Vercel Serverless Read-Only Filesystem)
 BASE_DIR = os.getcwd()
 MODEL_PATH = os.path.join(BASE_DIR, 'tapg_logistic_regression.joblib')
 SCALER_PATH = os.path.join(BASE_DIR, 'tapg_scaler.joblib')
-CACHE_PATH = os.path.join(BASE_DIR, 'latest_prediction.json')
-CONFIG_PATH = os.path.join(BASE_DIR, 'dashboard_config.json')
-LOG_PATH = os.path.join(BASE_DIR, 'dashboard_logs.txt')
+
+IS_VERCEL = os.environ.get('VERCEL') == '1' or os.environ.get('AWS_LAMBDA_FUNCTION_NAME') is not None
+
+if IS_VERCEL:
+    CACHE_PATH = '/tmp/latest_prediction.json'
+    CONFIG_PATH = '/tmp/dashboard_config.json'
+    LOG_PATH = '/tmp/dashboard_logs.txt'
+else:
+    CACHE_PATH = os.path.join(BASE_DIR, 'latest_prediction.json')
+    CONFIG_PATH = os.path.join(BASE_DIR, 'dashboard_config.json')
+    LOG_PATH = os.path.join(BASE_DIR, 'dashboard_logs.txt')
 
 # State & Logs global
 system_logs = []
@@ -99,16 +107,16 @@ def fetch_cpo_tradingeconomics():
 
 def sync_to_google_sheet(result):
     try:
-        if not os.path.exists(CONFIG_PATH):
-            log_message("[SHEETS] File konfigurasi belum ada. Lewati sinkronisasi.")
-            return
-            
-        with open(CONFIG_PATH, 'r') as f:
-            config_data = json.load(f)
-            webhook_url = config_data.get('webhook_url', '')
+        webhook_url = os.environ.get('WEBHOOK_URL', '').strip()
+        
+        if not webhook_url:
+            if os.path.exists(CONFIG_PATH):
+                with open(CONFIG_PATH, 'r') as f:
+                    config_data = json.load(f)
+                    webhook_url = config_data.get('webhook_url', '').strip()
             
         if not webhook_url:
-            log_message("[SHEETS] Webhook URL tidak terkonfigurasi. Silakan isi di dashboard.")
+            log_message("[SHEETS] Webhook URL tidak terkonfigurasi. Silakan isi di dashboard atau pasang env variable WEBHOOK_URL di Vercel.")
             return
             
         log_message(f"[SHEETS] Mengirim data prediksi ke Google Sheet via Webhook...")
@@ -363,8 +371,11 @@ def get_prediction():
                 data = json.load(f)
             return jsonify({'success': True, 'data': data, 'logs': system_logs})
         else:
-            return jsonify({'success': False, 'message': 'Belum ada data prediksi. Lakukan Force Sync.'})
+            log_message("[API] Cache tidak ditemukan. Melakukan kalkulasi live...")
+            data = fetch_and_predict()
+            return jsonify({'success': True, 'data': data, 'logs': system_logs})
     except Exception as e:
+        log_message(f"[API ERROR] Gagal mengambil prediksi live: {str(e)}")
         return jsonify({'success': False, 'message': str(e)})
 
 @app.route('/api/sync', methods=['POST'])
