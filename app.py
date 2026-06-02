@@ -223,6 +223,20 @@ def fetch_and_predict():
     aligned = aligned.sort_values('Date').reset_index(drop=True)
     aligned = aligned.ffill().bfill()
     
+    # [EOD LOCK] Kunci kalkulasi pada data harian EOD (penutupan penuh)
+    if not aligned.empty:
+        wib_now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
+        today_wib_str = wib_now.strftime('%Y-%m-%d')
+        latest_row_date_str = aligned.iloc[-1]['Date'].strftime('%Y-%m-%d')
+        
+        if latest_row_date_str == today_wib_str:
+            # Sebelum pukul 16:15 WIB, lilin harian hari ini belum resmi ditutup
+            if wib_now.time() < datetime.time(16, 15):
+                log_message(f"[EOD LOCK] Lilin hari ini ({latest_row_date_str}) dilewati karena pasar masih aktif. Menggunakan data EOD kemarin.")
+                aligned = aligned.iloc[:-1].reset_index(drop=True)
+            else:
+                log_message(f"[EOD LOCK] Menggunakan lilin harian hari ini ({latest_row_date_str}) karena pasar telah ditutup.")
+    
     # 5. Fallback Handler Dinamis untuk CPO
     cpo_all_nan = aligned['CPO_Close'].isna().all() or 'CPO_Close' not in aligned.columns
     if cpo_all_nan:
