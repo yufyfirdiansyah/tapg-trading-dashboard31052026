@@ -54,7 +54,8 @@ else:
 system_logs = []
 
 def log_message(msg):
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    wib_now = datetime.datetime.utcnow() + datetime.timedelta(hours=7)
+    timestamp = wib_now.strftime("%Y-%m-%d %H:%M:%S")
     formatted = f"[{timestamp}] {msg}"
     print(formatted)
     system_logs.append(formatted)
@@ -286,7 +287,7 @@ def fetch_and_predict():
     
     # 9. Format Hasil Prediksi & Data Pendukung
     result = {
-        'last_sync': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'last_sync': (datetime.datetime.utcnow() + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M:%S WIB"),
         'target_date': latest_date,
         'decision': decision,
         'signal_code': int(pred), # 1 untuk BUY, 0 untuk SELL
